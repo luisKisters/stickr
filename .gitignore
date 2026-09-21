@@ -1,0 +1,11 @@
+.env
+.build/
+build/
+DerivedData/
+*.xcodeproj
+tools/bin/
+reports/
+# personal stickers and screenshots never go into git
+mockup/stickers/
+mockup/shots/
+tests/fixtures/whatsapp/
