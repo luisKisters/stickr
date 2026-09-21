@@ -10,11 +10,11 @@ public struct ReadStats: Sendable {
 /// Results are saved one sticker at a time, so a stop and a later run continue where this run stopped.
 public final class Indexer: @unchecked Sendable {
     let store: Store
-    let client: ModelClient
+    let client: any ModelReading
     var paused = false
     let lock = NSLock()
 
-    public init(store: Store, client: ModelClient) {
+    public init(store: Store, client: any ModelReading) {
         self.store = store; self.client = client
     }
 
@@ -42,7 +42,7 @@ public final class Indexer: @unchecked Sendable {
                             let r = try await client.caption(bytes: try Data(contentsOf: URL(fileURLWithPath: s.path)))
                             s.caption = r.caption; s.textInImage = r.textInImage; s.mood = r.mood
                             s.tags = r.tags; s.emojis = r.emojis; s.state = "read"
-                            s.model = client.captionModel; s.provider = r.provider
+                            s.model = client.captionModelName; s.provider = r.provider
                             try store.save(s)
                             try store.addCost(r.cost)
                             onSticker(s, "read")

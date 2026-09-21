@@ -175,6 +175,11 @@ func run() async throws {
         }
     case "pack":
         try await pack(store: store, rest: rest)
+    case "search-cases":
+        let dir = URL(fileURLWithPath: rest.first ?? "mockup/stickers")
+        let casesFile = URL(fileURLWithPath: rest.dropFirst().first ?? "tests/search_cases.json")
+        let failures = try await runSearchCases(dir: dir, casesFile: casesFile, searchZOverride: flags["z"] != nil ? Double(flags["z"] ?? "") : nil, storeURL: flags["store"].map { URL(fileURLWithPath: $0) })
+        if failures > 0 { exit(1) }
     default:
         print("Unknown command: \(command)"); exit(1)
     }
@@ -259,6 +264,7 @@ while i < args.count {
     if a == "--key", i + 1 < args.count { flags["key"] = args[i + 1]; i += 2 }
     else if a == "--limit", i + 1 < args.count { flags["limit"] = args[i + 1]; i += 2 }
     else if a == "--z", i + 1 < args.count { flags["z"] = args[i + 1]; i += 2 }
+    else if a == "--store", i + 1 < args.count { flags["store"] = args[i + 1]; i += 2 }
     else if a == "--retry-failed" { flags["retry-failed"] = "true"; i += 1 }
     else if a == "--json" { flags["json"] = "true"; i += 1 }
     else { positional.append(a); i += 1 }

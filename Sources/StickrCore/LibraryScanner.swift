@@ -21,10 +21,11 @@ public struct LibraryScanner: Sendable {
     }
 
     public init(container: URL? = nil, stickrDir: URL? = nil) throws {
-        guard let container = container ?? Self.whatsappContainer() else {
+        let resolved = container ?? Self.whatsappContainer()
+        guard let resolved, FileManager.default.fileExists(atPath: resolved.path) else {
             throw Store.StoreError("Stickr cannot see your stickers. macOS is blocking access to the WhatsApp data. Open System Settings, Privacy & Security, Files and Folders, and allow access for Stickr, then click Allow again.")
         }
-        self.container = container
+        self.container = resolved
         self.stickrDir = stickrDir ?? URL(fileURLWithPath: NSString(string: "~/Library/Application Support/Stickr").expandingTildeInPath)
     }
 
@@ -115,7 +116,7 @@ public struct LibraryScanner: Sendable {
                 added += 1
                 let dest = dir.appendingPathComponent("\(id).webp")
                 try f.bytes.write(to: dest, options: .atomic)
-                let img = webpSize(f.bytes) ?? (f.w, f.h)
+                let img = Self.webpSize(f.bytes) ?? (f.w, f.h)
                 try store.save(Sticker(
                     id: id, path: dest.path, animated: f.animated, width: img.0, height: img.1,
                     byteSize: f.bytes.count, source: f.source, sentCount: 0, firstSeen: now,
@@ -138,7 +139,7 @@ public struct LibraryScanner: Sendable {
     func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
     /// Reads the WebP header for the pixel size. Returns nil for exotic files.
-    func webpSize(_ d: Data) -> (Int, Int)? {
+    public static func webpSize(_ d: Data) -> (Int, Int)? {
         guard d.count >= 30, d.starts(with: [0x52, 0x49, 0x46, 0x46]) else { return nil }
         // VP8X
         if d.range(of: Data("VP8X".utf8), in: 12..<16) != nil, d.count >= 30 {

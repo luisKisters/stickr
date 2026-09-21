@@ -12,17 +12,20 @@ public struct CaptionResult: Sendable {
 }
 
 /// Talks to OpenRouter or any OpenAI-compatible server. Retries 429 and 5xx four times with a growing pause.
-public struct ModelClient: Sendable {
+public struct ModelClient: ModelReading {
     public var baseURL: URL
     public var key: String
     public var captionModel: String
+    public var captionModelName: String { captionModel }
     public var embedModel: String
     public var routing: String    // baseten-first | baseten | ""
+    var session: URLSession
 
     public init(baseURL: URL = URL(string: "https://openrouter.ai/api/v1")!, key: String,
-                captionModel: String = "z-ai/glm-5.3-flash", embedModel: String = "baai/bge-m3", routing: String = "baseten-first") {
+                captionModel: String = "z-ai/glm-5.3-flash", embedModel: String = "baai/bge-m3", routing: String = "baseten-first",
+                session: URLSession = .shared) {
         self.baseURL = baseURL; self.key = key; self.captionModel = captionModel
-        self.embedModel = embedModel; self.routing = routing
+        self.embedModel = embedModel; self.routing = routing; self.session = session
     }
 
     nonisolated(unsafe) public static let routes: [String: [String: Any]] = [
@@ -67,7 +70,7 @@ public struct ModelClient: Sendable {
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await session.data(for: req)
         let statusCode = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if statusCode >= 400 {
             let message = (try? JSONSerialization.jsonObject(with: data))
