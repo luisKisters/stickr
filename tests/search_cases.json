@@ -1,19 +1,85 @@
 {
   "note": "Measured on 21 Sep 2026 with z-ai/glm-5.3-flash captions and baai/bge-m3 vectors over the 40 stickers in mockup/stickers. 'expect' lists sticker file numbers that must be in the result. 'forbid' must not be. Captions differ a little per run, so a case passes when every 'expect' id is in the top 5.",
   "search_z": 2.0,
-  "pack_z": 1.0,
+  "pack_z": 0.6,
   "search": [
-    {"q": "we need to talk", "expect": [23]},
-    {"q": "Stress wegen Abgabe", "expect": [33]},
-    {"q": "cat that agrees", "expect": [24]},
-    {"q": "müde", "expect": [40]},
-    {"q": "wütend", "expect": [17]},
-    {"q": "thumbs up", "expect": [24]},
-    {"q": "celebrate friday drinks", "expect": [20]},
-    {"q": "qwertz nonsense zzz", "expect": [], "max_results": 0}
+    {
+      "q": "we need to talk",
+      "expect": [
+        23
+      ]
+    },
+    {
+      "q": "Stress wegen Abgabe",
+      "expect": [
+        33
+      ]
+    },
+    {
+      "q": "cat that agrees",
+      "expect": [
+        24
+      ]
+    },
+    {
+      "q": "m\u00fcde",
+      "expect": [
+        40
+      ]
+    },
+    {
+      "q": "w\u00fctend",
+      "expect": [
+        17
+      ]
+    },
+    {
+      "q": "thumbs up",
+      "expect": [
+        24
+      ]
+    },
+    {
+      "q": "celebrate friday drinks",
+      "expect": [
+        20
+      ]
+    },
+    {
+      "q": "qwertz nonsense zzz",
+      "expect": [],
+      "max_results": 0
+    }
   ],
   "packs": [
-    {"rule": "Every sticker with a cat", "expect_at_least": [24, 26, 16, 30, 12, 23, 35, 7], "forbid": [33, 17, 20]},
-    {"rule": "Deadlines, too much work, being late, being tired of it all", "expect_at_least": [33, 37], "forbid": [24, 20]}
+    {
+      "rule": "Every sticker with a cat",
+      "expect_at_least": [
+        24,
+        26,
+        16,
+        30,
+        12,
+        23,
+        35,
+        7
+      ],
+      "forbid": [
+        33,
+        17,
+        20
+      ]
+    },
+    {
+      "rule": "Deadlines, too much work, being late, being tired of it all",
+      "expect_at_least": [
+        33,
+        37
+      ],
+      "forbid": [
+        24,
+        20
+      ]
+    }
   ]
 }
