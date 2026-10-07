@@ -231,16 +231,26 @@ func pack(store: Store, rest: [String]) async throws {
         let bad = members.compactMap { s -> (Sticker, String)? in PackExport.limitProblems(s).map { (s, $0) } }
         let ok = members.filter { PackExport.limitProblems($0) == nil }
         let (still, animated) = PackEngine.splitByAnimation(ok)
-        var parts: [(data: Data, count: Int)] = []
-        if still.count >= 3 { parts.append((try PackExport.packJSON(name: name, members: still, animated: false), still.count)) }
-        if animated.count >= 3 { parts.append((try PackExport.packJSON(name: name + " animated", members: animated, animated: true), animated.count)) }
-        guard !parts.isEmpty else { throw Store.StoreError("This pack has fewer than 3 stickers that fit the WhatsApp limits.") }
-        for part in parts {
-            _ = try WhatsAppInstall.install(packJSON: part.data)
-            try store.recordInstall(pack: name, members: p.members, waPackID: PackExport.slug(name))
-            print("Handed \(part.count) stickers to WhatsApp. Confirm the dialog there.")
-        }
+        // WhatsApp takes one pack per whatsapp://stickerPack open. One part per run.
+        let wantAnimated = flags["animated"] != nil
+        let chosen = wantAnimated ? animated : still
+        let partName = wantAnimated ? name + " animated" : name
+        guard chosen.count >= 3 else { throw Store.StoreError("This part has fewer than 3 stickers that fit the WhatsApp limits. Run with \(wantAnimated ? "--animated removed" : "--animated") for the other part.") }
+        let json = try PackExport.packJSON(name: partName, members: chosen, animated: wantAnimated)
+        _ = try WhatsAppInstall.install(packJSON: json)
+        try store.recordInstall(pack: partName, members: chosen.map(\.id), waPackID: PackExport.slug(partName))
+        print("Handed \(chosen.count) stickers to WhatsApp. Confirm the dialog there.")
+        if still.count >= 3 && animated.count >= 3 && !wantAnimated { print("Run the same command with --animated to install the animated part.") }
         for (s, why) in bad { print("Left out \(s.id.prefix(12)): \(why)") }
+    case "export":
+        guard let name = rest2.first, let p = try store.pack(name: name) else { print("stickr pack export <name> [--animated] > pack.json"); exit(1) }
+        let members = p.members.compactMap { byID[$0] }.filter { PackExport.limitProblems($0) == nil }
+        let (still, animated) = PackEngine.splitByAnimation(members)
+        let wantAnimated = flags["animated"] != nil
+        let chosen = wantAnimated ? animated : still
+        let json = try PackExport.packJSON(name: wantAnimated ? name + " animated" : name, members: chosen, animated: wantAnimated)
+        try json.write(to: URL(fileURLWithPath: rest2.dropFirst().first ?? "/tmp/pack.json"))
+        print("wrote \(rest2.dropFirst().first ?? "pack.json")")
     case "status":
         guard let name = rest2.first, let p = try store.pack(name: name) else { print("No pack with this name."); exit(1) }
         guard let install = try store.lastInstall(pack: name) else { print("not installed"); return }

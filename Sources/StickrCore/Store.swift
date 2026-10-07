@@ -139,6 +139,9 @@ public final class Store: @unchecked Sendable {
         try query("SELECT * FROM stickers WHERE state = ? ORDER BY id", bind: [.text(state)]) { out.append(try $0.sticker()) }
         return out
     }
+    public func resetAutomaticReads() throws {
+        try run("UPDATE stickers SET state = 'waiting', vector = NULL WHERE edited = 0")
+    }
 
     // ---------- packs ----------
     public struct Pack: Codable, Sendable {

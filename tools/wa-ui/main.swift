@@ -1,5 +1,5 @@
 // wa-ui: the small set of actions a computer-use agent needs to test Stickr inside the real WhatsApp app.
-// Safety rule: every action that clicks, types or sends first checks that the open chat is "Message yourself".
+// Safety rule: every action that clicks, types or sends first checks that the open chat is "Notizen".
 // If it is not, the command fails with exit code 3 and does nothing.
 import AppKit
 
@@ -8,10 +8,16 @@ let container = NSString(string: "~/Library/Group Containers/group.net.whatsapp.
 
 func fail(_ msg: String, _ code: Int32 = 1) -> Never { FileHandle.standardError.write((msg + "\n").data(using: .utf8)!); exit(code) }
 func whatsapp() -> NSRunningApplication {
-  guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { fail("WhatsApp is not running. Run: wa-ui open-self") }
+  guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { fail("WhatsApp is not running. Run: wa-ui open-notizen") }
   return app
 }
 func attr(_ e: AXUIElement, _ a: String) -> AnyObject? { var v: AnyObject?; AXUIElementCopyAttributeValue(e, a as CFString, &v); return v }
+func enableManualAX() {
+  let ax = AXUIElementCreateApplication(whatsapp().processIdentifier)
+  var v: AnyObject?
+  AXUIElementCopyAttributeValue(ax, "AXManualAccessibility" as CFString, &v)
+  if (v as? Bool) != true { AXUIElementSetAttributeValue(ax, "AXManualAccessibility" as CFString, kCFBooleanTrue) }
+}
 func label(_ e: AXUIElement) -> String { ["AXDescription", "AXTitle", "AXValue", "AXIdentifier"].compactMap { attr(e, $0) as? String }.joined(separator: " | ") }
 func frame(_ e: AXUIElement) -> CGRect {
   var p = CGPoint.zero, s = CGSize.zero
@@ -39,8 +45,52 @@ func find(_ text: String) -> AXUIElement? {
   walk(mainWindow().0) { e, _ in if (attr(e, "AXRole") as? String) != "AXGroup", label(e).lowercased().contains(want) { hit = e; return false }; return true }
   return hit
 }
-func selfChatIsOpen() -> Bool { find("Message yourself") != nil }
-func requireSelfChat() { if !selfChatIsOpen() { fail("REFUSED: the open chat is not 'Message yourself'. Run: wa-ui open-self", 3) } }
+// The only chat the agent may use is the one named "Notizen" (WhatsApp's note to self).
+// The header shows the name at the top of the right pane, so a small y is what marks it open.
+func notizenChatIsOpen() -> Bool {
+    let origin = mainWindow().1.origin
+    var hit = false
+    walk(mainWindow().0) { e, _ in
+        if (attr(e, "AXRole") as? String) == "AXButton", (attr(e, "AXDescription") as? String) == "Notizen" {
+            let f = frame(e)
+            let cy = f.midY - origin.y, cx = f.midX - origin.x
+            if cy < 80 && cx > 500 { hit = true; return false }
+        }
+        return true
+    }
+    return hit
+}
+func packDialogIsOpen() -> Bool {
+    var hit = false
+    walk(mainWindow().0) { e, _ in
+        if (attr(e, "AXRole") as? String) == "AXGroup", label(e).lowercased().contains("wastickerpackview") {
+            hit = true; return false
+        }
+        return true
+    }
+    return hit
+}
+func trayIsOpen() -> Bool {
+    var hit = false
+    walk(mainWindow().0) { e, _ in
+        if label(e).lowercased().contains("stickerbrowser") { hit = true; return false }
+        return true
+    }
+    return hit
+}
+func alertIsOpen() -> Bool {
+    var hit = false
+    walk(mainWindow().0) { e, _ in
+        if (attr(e, "AXRole") as? String) == "AXSheet", label(e).lowercased().contains("alert") { hit = true; return false }
+        return true
+    }
+    return hit
+}
+func requireNotizenChat() {
+    if !notizenChatIsOpen() && !packDialogIsOpen() && !trayIsOpen() && !alertIsOpen() {
+        fail("REFUSED: the open chat is not 'Notizen' and no pack import dialog is open. Run: wa-ui open-notizen", 3)
+    }
+}
 func bringToFront() {
   let app = whatsapp(); app.activate(options: [.activateAllWindows])
   for _ in 0..<30 { usleep(100_000); if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID { usleep(300_000); return } }
@@ -61,15 +111,49 @@ func run(_ tool: String, _ args: [String]) -> String {
 let keyCodes: [String: CGKeyCode] = ["return": 36, "escape": 53, "tab": 48, "down": 125, "up": 126, "left": 123, "right": 124, "delete": 51]
 
 let args = Array(CommandLine.arguments.dropFirst())
+if args.first != "help" { enableManualAX() }
 switch args.first ?? "help" {
 case "guard":
-  print(selfChatIsOpen() ? "OK: the open chat is 'Message yourself'." : "NO: another chat is open."); exit(selfChatIsOpen() ? 0 : 3)
+  let ok = notizenChatIsOpen() || trayIsOpen()
+  print(ok ? "OK: the open chat is 'Notizen'." : "NO: the open chat is not 'Notizen'."); exit(ok ? 0 : 3)
 
-case "open-self":   // opens the chat with yourself. This is the only chat the agent may use.
-  let plist = NSDictionary(contentsOfFile: container + "/Library/Preferences/group.net.whatsapp.WhatsApp.shared.plist")
-  guard let jid = plist?["OwnJabberID"] as? String, let number = jid.split(separator: "@").first else { fail("Own number not found in the WhatsApp preferences.") }
-  NSWorkspace.shared.open(URL(string: "whatsapp://send?phone=\(number)")!); sleep(3)
-  print(selfChatIsOpen() ? "OK" : "The self chat did not open."); exit(selfChatIsOpen() ? 0 : 3)
+case "open-self", "open-notizen":   // opens the Notizen chat. This is the only chat the agent may use.
+  bringToFront()
+  if let row = find("Notizen") {
+    _ = AXUIElementPerformAction(row, "AXPress" as CFString)
+  } else {
+    // The AX tree can be empty after an alert. The Notizen row sits at a fixed spot, so click raw.
+    // This command only ever opens the Notizen chat, so it needs no chat guard.
+    let o = mainWindow().1.origin
+    for t in [CGEventType.leftMouseDown, .leftMouseUp] {
+      CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: o.x + 400, y: o.y + 355), mouseButton: .left)!.post(tap: .cghidEventTap)
+      usleep(60_000)
+    }
+  }
+  sleep(2)
+  print(notizenChatIsOpen() ? "OK" : "The Notizen chat did not open.")
+  exit(notizenChatIsOpen() ? 0 : 3)
+
+case "tray":       // opens the sticker tray through the menu item with identifier send_stickers
+  bringToFront()
+  let ax = AXUIElementCreateApplication(whatsapp().processIdentifier)
+  guard let bar = attr(ax, "AXMenuBar"), let items = attr(bar as! AXUIElement, "AXChildren") as? [AXUIElement] else {
+    fail("No menu bar found.")
+  }
+  var hit: AXUIElement?
+  for menu in items {
+    _ = AXUIElementPerformAction(menu, "AXPress" as CFString)
+    usleep(200_000)
+    walk(menu) { e, _ in
+      if let id = attr(e, "AXIdentifier") as? String, id.contains("send_stickers") { hit = e; return false }
+      return true
+    }
+    if hit != nil { break }
+  }
+  guard let target = hit else { fail("No menu item with identifier send_stickers.") }
+  let r = AXUIElementPerformAction(target, "AXPress" as CFString)
+  sleep(2)
+  print(r == .success ? "tray opened" : "press failed \(r.rawValue)")
 
 case "shot":        // wa-ui shot out.png   -> image in window points, so image x,y = click x,y
   guard args.count == 2 else { fail("usage: wa-ui shot <out.png>") }
@@ -86,26 +170,26 @@ case "ax":          // wa-ui ax [filter]   -> labelled elements with their centr
 
 case "press":       // wa-ui press "Add to my stickers"
   guard args.count == 2 else { fail("usage: wa-ui press <label text>") }
-  requireSelfChat()
+  requireNotizenChat()
   guard let e = find(args[1]) else { fail("No element with label: \(args[1])") }
   let r = AXUIElementPerformAction(e, "AXPress" as CFString); print(r == .success ? "pressed" : "press failed: \(r.rawValue)"); exit(r == .success ? 0 : 1)
 
 case "click":       // wa-ui click x y   (window coordinates, same as the screenshot)
   guard args.count == 3, let x = Double(args[1]), let y = Double(args[2]) else { fail("usage: wa-ui click <x> <y>") }
-  requireSelfChat(); bringToFront(); let o = mainWindow().1.origin; stillFront()
+  requireNotizenChat(); bringToFront(); let o = mainWindow().1.origin; stillFront()
   for t in [CGEventType.leftMouseDown, .leftMouseUp] { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: o.x + x, y: o.y + y), mouseButton: .left)!.post(tap: .cghidEventTap); usleep(60_000) }
   print("clicked")
 
 case "key":         // wa-ui key return | escape | tab | up | down | left | right | delete | cmd+v
   guard args.count == 2 else { fail("usage: wa-ui key <name>") }
   let cmdV = args[1] == "cmd+v"; guard cmdV || keyCodes[args[1]] != nil else { fail("unknown key") }
-  requireSelfChat(); bringToFront(); stillFront()
+  requireNotizenChat(); bringToFront(); stillFront()
   for down in [true, false] { let e = CGEvent(keyboardEventSource: CGEventSource(stateID: .hidSystemState), virtualKey: cmdV ? 9 : keyCodes[args[1]]!, keyDown: down)!; if cmdV { e.flags = .maskCommand }; e.post(tap: .cghidEventTap); usleep(40_000) }
   print("sent key")
 
-case "type":        // wa-ui type "text"   (into the focused field of the self chat)
+case "type":        // wa-ui type "text"   (into the focused field of the Notizen chat)
   guard args.count == 2 else { fail("usage: wa-ui type <text>") }
-  requireSelfChat(); bringToFront(); stillFront()
+  requireNotizenChat(); bringToFront(); stillFront()
   for ch in args[1].utf16 { for down in [true, false] { let e = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)!; var c = ch; e.keyboardSetUnicodeString(stringLength: 1, unicodeString: &c); e.post(tap: .cghidEventTap); usleep(15_000) } }
   print("typed")
 
@@ -120,16 +204,15 @@ case "packs":       // wa-ui packs   -> installed packs as WhatsApp stores them 
   for ext in ["", "-wal", "-shm"] { try? FileManager.default.copyItem(atPath: container + "/Sticker.sqlite" + ext, toPath: tmp + ext) }
   print(run("/usr/bin/sqlite3", [tmp, "select ZNAME || ' | ' || ZSTICKERPACKID || ' | ' || ZSTICKERCOUNT from ZWACDABSTRACTSTICKERPACK where Z_ENT=2 order by Z_PK"]))
 
-case "last-message": // wa-ui last-message -> type of the newest message you sent in the self chat. 15 = sticker, 1 = image.
+case "last-message": // wa-ui last-message -> type of the newest message in the Notizen chat. 15 = sticker, 1 = image.
   let tmp = NSTemporaryDirectory() + "stickr-chat-\(getpid()).sqlite"
   for ext in ["", "-wal", "-shm"] { try? FileManager.default.copyItem(atPath: container + "/ChatStorage.sqlite" + ext, toPath: tmp + ext) }
-  let plist = NSDictionary(contentsOfFile: container + "/Library/Preferences/group.net.whatsapp.WhatsApp.shared.plist"); let jid = plist?["OwnJabberID"] as? String ?? ""
-  print(run("/usr/bin/sqlite3", [tmp, "select 'type=' || m.ZMESSAGETYPE || ' seconds_ago=' || cast(strftime('%s','now') - (m.ZMESSAGEDATE + 978307200) as int) from ZWAMESSAGE m join ZWACHATSESSION c on m.ZCHATSESSION=c.Z_PK where c.ZCONTACTJID='\(jid)' order by m.ZMESSAGEDATE desc limit 1"]))
+  print(run("/usr/bin/sqlite3", [tmp, "select 'type=' || m.ZMESSAGETYPE || ' seconds_ago=' || cast(strftime('%s','now') - (m.ZMESSAGEDATE + 978307200) as int) from ZWAMESSAGE m join ZWACHATSESSION c on m.ZCHATSESSION=c.Z_PK where c.ZPARTNERNAME='Notizen' order by m.ZMESSAGEDATE desc limit 1"]))
 
 default:
   print("""
-  wa-ui guard | open-self | shot <out.png> | ax [filter] | press <label> | click <x> <y> | key <name> | type <text>
+  wa-ui guard | open-notizen | shot <out.png> | ax [filter] | press <label> | click <x> <y> | key <name> | type <text>
         import-pack <pack.json> | packs | last-message
-  Actions only work while the chat 'Message yourself' is open. Coordinates are window points and match the screenshot.
+  Actions only work while the chat 'Notizen' is open. Coordinates are window points and match the screenshot.
   """)
 }

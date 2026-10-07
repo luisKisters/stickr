@@ -1,6 +1,6 @@
 import Foundation
 
-public struct CaptionResult: Sendable {
+public struct CaptionResult: Codable, Sendable {
     public var caption: String
     public var textInImage: String
     public var mood: String

@@ -12,11 +12,18 @@ public enum PackExport {
         var stickers: [[String: Any]] = []
         for s in members {
             let data = try Data(contentsOf: URL(fileURLWithPath: s.path))
+            // WhatsApp rejects entries that are not emoji, so keep only emoji characters.
+            // Words from the model are not emoji and WhatsApp rejects them, so drop anything with ASCII letters.
+            let emojis = s.emojis.map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && !$0.contains(where: { $0.isASCII && $0.isLetter }) }
             var entry: [String: Any] = [
                 "image_data": data.base64EncodedString(),
-                "emojis": s.emojis.isEmpty ? ["🙂"] : Array(s.emojis.prefix(3)),
+                "emojis": emojis.isEmpty ? ["🙂"] : Array(emojis.prefix(3)),
             ]
-            if !s.caption.isEmpty { entry["accessibility_text"] = s.caption }
+            if !s.caption.isEmpty {
+                // WhatsApp rejects overlong accessibility labels without showing a useful error.
+                entry["accessibility_text"] = String(s.caption.prefix(125))
+            }
             stickers.append(entry)
         }
         var dict: [String: Any] = [

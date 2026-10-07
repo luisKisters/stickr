@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ReadStats: Sendable {
+public struct ReadStats: Codable, Sendable {
     public var read = 0
     public var failed = 0
     public var skipped = 0
@@ -33,6 +33,7 @@ public final class Indexer: @unchecked Sendable {
         var stats = ReadStats()
         // Three caption requests at a time, in order, so a stop loses nothing.
         for batch in queue.chunked(into: 3) {
+            if isPaused() { break }
             try await withThrowingTaskGroup(of: Sticker.self) { group in
                 for sticker in batch {
                     group.addTask { [client, store, self] in
@@ -63,6 +64,7 @@ public final class Indexer: @unchecked Sendable {
         // Meaning vectors in batches of up to 64 texts, after the captions.
         let all = try store.allStickers().filter { $0.state == "read" && $0.vector == nil }
         for batch in all.chunked(into: 64) {
+            if isPaused() { break }
             let vectors = try await client.embed(texts: batch.map { $0.docText })
             for (i, v) in vectors.enumerated() where i < batch.count {
                 var s = batch[i]; s.vector = v

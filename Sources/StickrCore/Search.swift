@@ -4,9 +4,9 @@ import Accelerate
 public struct SearchEngine: Sendable {
     public let stickers: [Sticker]
     public let searchZ: Double      // 2.0: a hit must stand out from the whole library
-    public let packZ: Double        // 1.0: packs cast a wider net
+    public let packZ: Double        // 0.6: packs cast a wider net
 
-    public init(stickers: [Sticker], searchZ: Double = 2.0, packZ: Double = 1.0) {
+    public init(stickers: [Sticker], searchZ: Double = PackEngine.zSearch, packZ: Double = PackEngine.zPack) {
         self.stickers = stickers; self.searchZ = searchZ; self.packZ = packZ
     }
 

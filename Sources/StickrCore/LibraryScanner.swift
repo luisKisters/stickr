@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 import SQLite3
 
-public struct ScanResult: Sendable {
+public struct ScanResult: Codable, Sendable {
     public var added: Int
     public var known: Int
     public var gone: Int

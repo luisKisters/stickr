@@ -3,7 +3,7 @@ import Foundation
 public enum PackEngine {
     public static let maxMembers = 30
     public static let zSearch = 2.0
-    public static let zPack = 1.0
+    public static let zPack = 0.6
 
     /// Pinned stickers first in their pinned order, then by times sent, then by similarity. At most 30.
     public static func members(pack: Store.Pack, stickers: [Sticker], ruleResults: [Sticker]) -> [Sticker] {
