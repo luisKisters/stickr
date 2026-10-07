@@ -87,7 +87,8 @@ func alertIsOpen() -> Bool {
     return hit
 }
 func requireNotizenChat() {
-    if !notizenChatIsOpen() && !packDialogIsOpen() && !trayIsOpen() && !alertIsOpen() {
+    // The pack import dialog is not tied to a chat. The tray and alerts are, so they need the Notizen chat behind them.
+    if !notizenChatIsOpen() && !packDialogIsOpen() {
         fail("REFUSED: the open chat is not 'Notizen' and no pack import dialog is open. Run: wa-ui open-notizen", 3)
     }
 }
@@ -114,7 +115,7 @@ let args = Array(CommandLine.arguments.dropFirst())
 if args.first != "help" { enableManualAX() }
 switch args.first ?? "help" {
 case "guard":
-  let ok = notizenChatIsOpen() || trayIsOpen()
+  let ok = notizenChatIsOpen()
   print(ok ? "OK: the open chat is 'Notizen'." : "NO: the open chat is not 'Notizen'."); exit(ok ? 0 : 3)
 
 case "open-self", "open-notizen":   // opens the Notizen chat. This is the only chat the agent may use.

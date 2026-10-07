@@ -59,12 +59,13 @@ final class AppBridge: NSObject, WKScriptMessageHandlerWithReply {
             let result = try await client.testConnection(bytes: Data(contentsOf: URL(fileURLWithPath: sample.path)))
             return try json(result)
         case "read":
+            guard activeIndexer == nil else { throw Store.StoreError("Stickr is already reading your stickers.") }
             let indexer = Indexer(store: store, client: try modelClient())
             activeIndexer = indexer
+            defer { activeIndexer = nil }
             let stats = try await indexer.readAll(retryFailed: p["retryFailed"] as? Bool ?? false) { [weak self] sticker, state in
                 Task { @MainActor in self?.window?.reportProgress(stickerID: sticker.id, state: state) }
             }
-            activeIndexer = nil
             return try json(stats)
         case "pauseRead":
             activeIndexer?.setPaused(true)
@@ -130,7 +131,7 @@ final class AppBridge: NSObject, WKScriptMessageHandlerWithReply {
             let group = animated ? split.animated : split.still
             guard group.count >= 3 else { throw Store.StoreError("This variant needs at least three compatible stickers.") }
             let data = try PackExport.packJSON(name: title, members: group, animated: animated)
-            _ = try WhatsAppInstall.install(packJSON: data)
+            _ = try await WhatsAppInstall.install(packJSON: data)
             try store.recordInstall(pack: title, members: group.map(\.id), waPackID: PackExport.slug(title))
             let pending = try AppRefresh.statuses(store: store).filter { !$0.current }
             try store.setSetting("pending_updates", String(data: try JSONEncoder().encode(pending), encoding: .utf8) ?? "[]")

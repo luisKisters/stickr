@@ -4,35 +4,33 @@ import AppKit
 /// The only way into WhatsApp: the official third-party sticker pack import.
 public enum WhatsAppInstall {
     public static let pasteboardType = NSPasteboard.PasteboardType("net.whatsapp.third-party.sticker-pack")
+    static let bundleID = "net.whatsapp.WhatsApp"
 
     @discardableResult
-    public static func install(packJSON: Data) throws -> Int {
+    public static func install(packJSON: Data) async throws -> Int {
         let pb = NSPasteboard.general
-        // Copy the old pasteboard contents as data, because items cannot move between pasteboards.
-        var previous: [(NSPasteboard.PasteboardType, Data)] = []
-        if let items = pb.pasteboardItems {
-            for item in items {
-                for t in item.types {
-                    if let d = item.data(forType: t) { previous.append((t, d)) }
-                }
-            }
+        // Copy the old pasteboard items as data, because items cannot move between pasteboards.
+        let previous: [NSPasteboardItem] = (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for t in item.types { if let d = item.data(forType: t) { copy.setData(d, forType: t) } }
+            return copy
         }
         pb.clearContents()
         guard pb.setData(packJSON, forType: pasteboardType) else {
             throw Store.StoreError("Stickr could not place the sticker pack on the pasteboard.")
         }
-        // WhatsApp reads the pasteboard after it opens, so restore the old contents after a short grace period.
         defer {
             pb.clearContents()
-            if !previous.isEmpty {
-                let item = NSPasteboardItem()
-                for (t, d) in previous { item.setData(d, forType: t) }
-                pb.writeObjects([item])
-            }
+            if !previous.isEmpty { pb.writeObjects(previous) }
         }
         let opened = NSWorkspace.shared.open(URL(string: "whatsapp://stickerPack")!)
         if !opened { throw Store.StoreError("WhatsApp did not open. Start WhatsApp and try again.") }
-        Thread.sleep(forTimeInterval: 4)
+        // WhatsApp reads the pasteboard after it has launched. Wait for the launch, then give it a grace period.
+        for _ in 0..<60 {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains(where: \.isFinishedLaunching) { break }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        try await Task.sleep(for: .seconds(4))
         return packJSON.count
     }
 }

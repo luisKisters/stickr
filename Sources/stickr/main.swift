@@ -237,7 +237,7 @@ func pack(store: Store, rest: [String]) async throws {
         let partName = wantAnimated ? name + " animated" : name
         guard chosen.count >= 3 else { throw Store.StoreError("This part has fewer than 3 stickers that fit the WhatsApp limits. Run with \(wantAnimated ? "--animated removed" : "--animated") for the other part.") }
         let json = try PackExport.packJSON(name: partName, members: chosen, animated: wantAnimated)
-        _ = try WhatsAppInstall.install(packJSON: json)
+        _ = try await WhatsAppInstall.install(packJSON: json)
         try store.recordInstall(pack: partName, members: chosen.map(\.id), waPackID: PackExport.slug(partName))
         print("Handed \(chosen.count) stickers to WhatsApp. Confirm the dialog there.")
         if still.count >= 3 && animated.count >= 3 && !wantAnimated { print("Run the same command with --animated to install the animated part.") }
@@ -248,17 +248,19 @@ func pack(store: Store, rest: [String]) async throws {
         let (still, animated) = PackEngine.splitByAnimation(members)
         let wantAnimated = flags["animated"] != nil
         let chosen = wantAnimated ? animated : still
+        guard chosen.count >= 3 else { throw Store.StoreError("This part has fewer than 3 stickers that fit the WhatsApp limits.") }
         let json = try PackExport.packJSON(name: wantAnimated ? name + " animated" : name, members: chosen, animated: wantAnimated)
-        try json.write(to: URL(fileURLWithPath: rest2.dropFirst().first ?? "/tmp/pack.json"))
-        print("wrote \(rest2.dropFirst().first ?? "pack.json")")
+        let path = rest2.dropFirst().first ?? "pack.json"
+        try json.write(to: URL(fileURLWithPath: path))
+        print("wrote \(path)")
     case "status":
         guard let name = rest2.first, let p = try store.pack(name: name) else { print("No pack with this name."); exit(1) }
-        guard let install = try store.lastInstall(pack: name) else { print("not installed"); return }
-        if install.members == p.members { print("current") }
-        else {
-            let added = Set(p.members).subtracting(install.members).count
-            let gone = Set(install.members).subtracting(p.members).count
-            print("changed: \(added) added, \(gone) removed")
+        let (still, animated) = PackEngine.splitByAnimation(p.members.compactMap { byID[$0] }.filter { PackExport.limitProblems($0) == nil })
+        for (part, group) in [(name, still), (name + " animated", animated)] where group.count >= 3 {
+            let ids = group.map(\.id)
+            guard let install = try store.lastInstall(pack: part) else { print("\(part): not installed"); continue }
+            if install.members == ids { print("\(part): current") }
+            else { print("\(part): changed: \(Set(ids).subtracting(install.members).count) added, \(Set(install.members).subtracting(ids).count) removed") }
         }
     default:
         print("Unknown pack action: \(action)"); exit(1)
@@ -278,6 +280,7 @@ while i < args.count {
     else if a == "--retry-failed" { flags["retry-failed"] = "true"; i += 1 }
     else if a == "--scores" { flags["scores"] = "true"; i += 1 }
     else if a == "--json" { flags["json"] = "true"; i += 1 }
+    else if a == "--animated" { flags["animated"] = "true"; i += 1 }
     else { positional.append(a); i += 1 }
 }
 args = positional
