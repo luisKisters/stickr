@@ -9,3 +9,4 @@ reports/
 mockup/stickers/
 mockup/shots/
 tests/fixtures/whatsapp/
+tests/fixtures/search-store.sqlite*
